@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Sms, Lock, Eye, EyeSlash, VideoPlay } from 'iconsax-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useAuthApi } from '../../hooks/useAuthApi';
 import { signInWithGoogle } from '../../libs/google-signin';
+import { appleSignInAvailable, signInWithApple } from '../../libs/apple-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { apiErrorMessage } from '../../libs/format';
 
 export default function LoginScreen() {
@@ -16,6 +18,26 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+
+  useEffect(() => {
+    appleSignInAvailable().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
+
+  const handleApple = async () => {
+    setAppleLoading(true);
+    try {
+      const session = await signInWithApple();
+      if (!session) return; // cancelled
+      await authContextLogin(session.access_token);
+      router.replace('/');
+    } catch (err) {
+      Alert.alert('Apple Sign-In Failed', apiErrorMessage(err, 'Please try again.'));
+    } finally {
+      setAppleLoading(false);
+    }
+  };
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
@@ -135,6 +157,20 @@ export default function LoginScreen() {
           <Text className="mx-4 text-xs font-semibold text-gray-400 tracking-wider">OR</Text>
           <View className="flex-1 h-[1px] bg-gray-200" />
         </View>
+
+        {/* Apple's own button, as required by the Human Interface Guidelines;
+            listed first and same size as Google per guideline 4.8. */}
+        {appleAvailable && (
+          <View className="w-full mb-3" style={{ opacity: appleLoading ? 0.6 : 1 }} pointerEvents={appleLoading ? 'none' : 'auto'}>
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={999}
+              style={{ width: '100%', height: 54 }}
+              onPress={handleApple}
+            />
+          </View>
+        )}
 
         <TouchableOpacity
           className="w-full py-4 px-6 rounded-full bg-white border border-gray-200 flex-row items-center justify-center"
