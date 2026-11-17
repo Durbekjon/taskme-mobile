@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { usersApi } from '../../libs/endpoints';
 import { config } from '../../libs/config';
+import { apiErrorMessage } from '../../libs/format';
 
 const ROLES = [
   'Photographer', 'Videographer', 'Photo Editor', 'Video Editor',
@@ -179,6 +180,29 @@ export default function ProfileScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log out', style: 'destructive', onPress: logout },
     ]);
+  };
+
+  // Required by the App Store and Google Play: in-app account deletion.
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete account',
+      'This permanently removes your name, email, phone, photo and Google connection, and signs you out on every device. Bookings and payments you were part of stay with the studio, without your details. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await usersApi.deleteAccount();
+              await logout();
+            } catch (err) {
+              Alert.alert('Error', apiErrorMessage(err, 'Could not delete the account. Please try again.'));
+            }
+          },
+        },
+      ],
+    );
   };
 
   const displayName = user?.fullName || user?.email || 'User';
@@ -372,6 +396,10 @@ export default function ProfileScreen() {
           >
             <LogoutCurve size={20} color="#ef4444" />
             <Text className="text-red-500 font-bold text-sm">Log out</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={handleDeleteAccount} className="items-center py-2 mb-6">
+            <Text className="text-gray-400 text-xs font-semibold">Delete account</Text>
           </TouchableOpacity>
 
           <Text className="text-center text-xs text-gray-300">Task.me</Text>
