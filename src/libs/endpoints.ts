@@ -38,12 +38,17 @@ export const authApi = {
 
   me: () => api.get<AuthUser>('/auth/me').then((r) => r.data),
 
+  config: () =>
+    api
+      .get<{ googleEnabled: boolean; whatsappOtpRequired: boolean }>('/auth/config')
+      .then((r) => r.data),
+
   onboarding: (payload: OnboardingPayload) =>
     api.post<AuthResponse>('/auth/onboarding', payload).then((r) => r.data),
 
   sendWhatsappOtp: (phoneNumber: string) =>
     api
-      .post<{ message: string }>('/auth/whatsapp/send-otp', { phoneNumber })
+      .post<{ message: string; resendAfterSeconds: number }>('/auth/whatsapp/send-otp', { phoneNumber })
       .then((r) => r.data),
 
   verifyWhatsappOtp: (otp: string) =>
