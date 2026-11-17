@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { Sms, Lock, Eye, EyeSlash, VideoPlay } from 'iconsax-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useAuthApi } from '../../hooks/useAuthApi';
+import { signInWithGoogle } from '../../libs/google-signin';
+import { apiErrorMessage } from '../../libs/format';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -13,6 +15,21 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const handleGoogle = async () => {
+    setGoogleLoading(true);
+    try {
+      const session = await signInWithGoogle();
+      if (!session) return; // browser closed
+      await authContextLogin(session.access_token);
+      router.replace('/');
+    } catch (err) {
+      Alert.alert('Google Sign-In Failed', apiErrorMessage(err, 'Please try again.'));
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -26,7 +43,7 @@ export default function LoginScreen() {
       // login response did not always carry.
       const { access_token } = await apiLogin({ email, password });
       await authContextLogin(access_token);
-      router.replace('/(tabs)');
+      router.replace('/');
     } catch (err: any) {
       Alert.alert('Login Failed', apiError || err?.message || 'Login failed');
     }
@@ -119,12 +136,20 @@ export default function LoginScreen() {
           <View className="flex-1 h-[1px] bg-gray-200" />
         </View>
 
-        {/* Google Placeholder (Assuming OAuth requires web-browser later) */}
         <TouchableOpacity
           className="w-full py-4 px-6 rounded-full bg-white border border-gray-200 flex-row items-center justify-center"
-          onPress={() => Alert.alert('Notice', 'Google Sign-In coming soon to mobile')}
+          onPress={handleGoogle}
+          disabled={googleLoading}
+          accessibilityRole="button"
         >
-          <Text className="text-gray-800 text-base font-semibold ml-2">Sign in with Google</Text>
+          {googleLoading ? (
+            <ActivityIndicator color="#111" />
+          ) : (
+            <>
+              <Text className="text-base font-bold" style={{ color: '#4285F4' }}>G</Text>
+              <Text className="text-gray-800 text-base font-semibold ml-2">Sign in with Google</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </View>

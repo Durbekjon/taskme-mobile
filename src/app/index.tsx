@@ -17,5 +17,7 @@ export default function Index() {
     return <Redirect href="/auth/login" />;
   }
 
-  return <Redirect href="/(tabs)" />;
+  // Google sign-in creates accounts without a role; they finish onboarding first.
+  const onboarded = user.roles?.some((r) => r === 'ADMIN' || r === 'CREATIVE');
+  return <Redirect href={onboarded ? '/(tabs)' : '/onboarding'} />;
 }
