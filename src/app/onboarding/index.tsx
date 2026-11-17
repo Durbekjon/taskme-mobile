@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthApi } from '../../hooks/useAuthApi';
@@ -6,13 +6,14 @@ import { apiErrorMessage } from '../../libs/format';
 import Animated, { FadeIn, FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { ArrowRight, Check, Briefcase, Camera, Gallery } from 'iconsax-react-native';
 import { useAuth } from '../../context/AuthContext';
+import { authApi } from '../../libs/endpoints';
 
 type Role = 'STUDIO' | 'CREATIVE' | null;
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const { login } = useAuth();
-  const { onboard, loading } = useAuthApi();
+  const { onboard, sendOtp, verifyOtp, loading } = useAuthApi();
   
   const [step, setStep] = useState(1);
   
@@ -27,6 +28,42 @@ export default function OnboardingScreen() {
     creativeId: '',
   });
 
+
+  // Verification turns on server-side once Meta approves the business.
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    authApi.config().then((c) => setOtpRequired(c.whatsappOtpRequired)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const handleSendOtp = async () => {
+    try {
+      const res = await sendOtp(formData.whatsapp.replace(/[\s()-]/g, ''));
+      setOtpSent(true);
+      setOtp('');
+      setResendIn(res?.resendAfterSeconds ?? 60);
+    } catch (err: any) {
+      Alert.alert('Error', apiErrorMessage(err, 'Failed to send the code'));
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    try {
+      await verifyOtp(otp);
+      setStep(2);
+    } catch (err: any) {
+      Alert.alert('Error', apiErrorMessage(err, 'Invalid code'));
+    }
+  };
 
   // Worker public IDs are "TM-######" everywhere else; "#CR-XXXXXX" could
   // never be matched by a studio typing the id into the invite box.
@@ -77,23 +114,66 @@ export default function OnboardingScreen() {
       return (
         <Animated.View entering={FadeInRight} exiting={FadeOutLeft} className="w-full">
           <Text className="text-3xl font-bold mb-2">Welcome to Task.me</Text>
-          <Text className="text-gray-500 mb-8">Let's get started by connecting your WhatsApp account.</Text>
+          <Text className="text-gray-500 mb-8">
+            {otpSent
+              ? `Enter the 6-digit code we sent to ${formData.whatsapp} on WhatsApp.`
+              : "Let's get started by connecting your WhatsApp account."}
+          </Text>
 
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">WhatsApp Number</Text>
-          <TextInput
-            value={formData.whatsapp}
-            onChangeText={v => setFormData(p => ({ ...p, whatsapp: v }))}
-            placeholder="+1 234 567 8900"
-            keyboardType="phone-pad"
-            className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base text-gray-900 mb-6"
-          />
+          {!otpSent ? (
+            <>
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">WhatsApp Number</Text>
+              <TextInput
+                value={formData.whatsapp}
+                onChangeText={v => setFormData(p => ({ ...p, whatsapp: v }))}
+                placeholder="+1 234 567 8900"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base text-gray-900 mb-6"
+              />
+            </>
+          ) : (
+            <>
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Verification Code</Text>
+              <TextInput
+                value={otp}
+                onChangeText={v => setOtp(v.replace(/\D/g, ''))}
+                placeholder="123456"
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                autoComplete="sms-otp"
+                maxLength={6}
+                autoFocus
+                className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-xl text-center tracking-widest text-gray-900 mb-3"
+              />
+              <View className="flex-row justify-between mb-6">
+                <TouchableOpacity onPress={() => setOtpSent(false)}>
+                  <Text className="text-gray-500">Change number</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSendOtp} disabled={resendIn > 0 || loading}>
+                  <Text className={resendIn > 0 ? 'text-gray-300' : 'text-gray-500'}>
+                    {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
           <TouchableOpacity
-            onPress={handleNext}
-            disabled={!formData.whatsapp}
+            onPress={!otpRequired ? handleNext : otpSent ? handleVerifyOtp : handleSendOtp}
+            disabled={loading || !formData.whatsapp || (otpRequired && otpSent && otp.length !== 6)}
             className="w-full py-4 rounded-full bg-black flex-row items-center justify-center"
           >
-            <Text className="text-white font-semibold text-base mr-2">Continue</Text>
-            <ArrowRight size={20} color="#fff" />
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text className="text-white font-semibold text-base mr-2">
+                  {!otpRequired ? 'Continue' : otpSent ? 'Verify Code' : 'Send Code'}
+                </Text>
+                {otpRequired && otpSent ? <Check size={20} color="#fff" /> : <ArrowRight size={20} color="#fff" />}
+              </>
+            )}
           </TouchableOpacity>
         </Animated.View>
       );
